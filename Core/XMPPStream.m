@@ -215,8 +215,6 @@ enum XMPPStreamConfig
 	numberOfBytesSent = 0;
 	numberOfBytesReceived = 0;
 	
-	parser = [[XMPPParser alloc] initWithDelegate:self delegateQueue:xmppQueue];
-	
 	hostPort = 5222;
 	keepAliveInterval = DEFAULT_KEEPALIVE_INTERVAL;
 	keepAliveData = [@" " dataUsingEncoding:NSUTF8StringEncoding];
@@ -1366,6 +1364,17 @@ enum XMPPStreamConfig
 		if (state != STATE_XMPP_CONNECTED)
 		{
 			NSString *errMsg = @"Please wait until the stream is connected.";
+			NSDictionary *info = [NSDictionary dictionaryWithObject:errMsg forKey:NSLocalizedDescriptionKey];
+			
+			err = [NSError errorWithDomain:XMPPStreamErrorDomain code:XMPPStreamInvalidState userInfo:info];
+			
+			result = NO;
+			return_from_block;
+		}
+		
+		if ([self isSecure])
+		{
+			NSString *errMsg = @"The connection is already secure.";
 			NSDictionary *info = [NSDictionary dictionaryWithObject:errMsg forKey:NSLocalizedDescriptionKey];
 			
 			err = [NSError errorWithDomain:XMPPStreamErrorDomain code:XMPPStreamInvalidState userInfo:info];
@@ -2671,25 +2680,19 @@ enum XMPPStreamConfig
 		[self setDidStartNegotiation:YES];
 	}
 	
-	if (state != STATE_XMPP_CONNECTING)
+	if (parser == nil)
+	{
+		XMPPLogVerbose(@"%@: Initializing parser...", THIS_FILE);
+		
+		// Need to create the parser.
+		parser = [[XMPPParser alloc] initWithDelegate:self delegateQueue:xmppQueue];
+	}
+	else
 	{
 		XMPPLogVerbose(@"%@: Resetting parser...", THIS_FILE);
 		
 		// We're restarting our negotiation, so we need to reset the parser.
-		[parser setDelegate:nil delegateQueue:NULL];
-		
 		parser = [[XMPPParser alloc] initWithDelegate:self delegateQueue:xmppQueue];
-	}
-	else if (parser == nil)
-	{
-		XMPPLogVerbose(@"%@: Initializing parser...", THIS_FILE);
-		
-		// Need to create parser (it was destroyed when the socket was last disconnected)
-		parser = [[XMPPParser alloc] initWithDelegate:self delegateQueue:NULL];
-	}
-	else
-	{
-		XMPPLogVerbose(@"%@: Not touching parser...", THIS_FILE);
 	}
 	
 	NSString *xmlns = @"jabber:client";
@@ -2766,35 +2769,47 @@ enum XMPPStreamConfig
 	// Create a mutable dictionary for security settings
 	NSMutableDictionary *settings = [NSMutableDictionary dictionaryWithCapacity:5];
 	
-	// Get a delegate enumerator
-	GCDMulticastDelegateEnumerator *delegateEnumerator = [multicastDelegate delegateEnumerator];
+	SEL selector = @selector(xmppStream:willSecureWithSettings:);
 	
-	dispatch_queue_t concurrentQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
-	dispatch_async(concurrentQueue, ^{ @autoreleasepool {
+	if (![multicastDelegate hasDelegateThatRespondsToSelector:selector])
+	{
+		// None of the delegates implement the method.
+		// Use a shortcut.
 		
-		// Prompt the delegate(s) to populate the security settings
+		[self continueStartTLS:settings];
+	}
+	else
+	{
+		// Query all interested delegates.
+		// This must be done serially to maintain thread safety.
 		
-		SEL selector = @selector(xmppStream:willSecureWithSettings:);
+		GCDMulticastDelegateEnumerator *delegateEnumerator = [multicastDelegate delegateEnumerator];
 		
-		id delegate;
-		dispatch_queue_t delegateQueue;
-		
-		while ([delegateEnumerator getNextDelegate:&delegate delegateQueue:&delegateQueue forSelector:selector])
-		{
-			dispatch_sync(delegateQueue, ^{ @autoreleasepool {
+		dispatch_queue_t concurrentQueue = dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0);
+		dispatch_async(concurrentQueue, ^{ @autoreleasepool {
+			
+			// Prompt the delegate(s) to populate the security settings
+			
+			id delegate;
+			dispatch_queue_t delegateQueue;
+			
+			while ([delegateEnumerator getNextDelegate:&delegate delegateQueue:&delegateQueue forSelector:selector])
+			{
+				dispatch_sync(delegateQueue, ^{ @autoreleasepool {
+					
+					[delegate xmppStream:self willSecureWithSettings:settings];
+					
+				}});
+			}
+			
+			dispatch_async(xmppQueue, ^{ @autoreleasepool {
 				
-				[delegate xmppStream:self willSecureWithSettings:settings];
+				[self continueStartTLS:settings];
 				
 			}});
-		}
-		
-		dispatch_async(xmppQueue, ^{ @autoreleasepool {
-			
-			[self continueStartTLS:settings];
 			
 		}});
-		
-	}});
+	}
 }
 
 - (void)continueStartTLS:(NSMutableDictionary *)settings
@@ -3035,6 +3050,16 @@ enum XMPPStreamConfig
 		{
 			// Now we start our negotiation over again...
 			[self sendOpeningNegotiation];
+			
+			if (![self isSecure])
+			{
+				// Normally we requeue our read operation in xmppParserDidParseData:.
+				// But we just reset the parser, so that code path isn't going to happen.
+				// So start read request here.
+				// The state is STATE_XMPP_OPENING, set via sendOpeningNegotiation method.
+				
+				[asyncSocket readDataWithTimeout:TIMEOUT_XMPP_READ_START tag:TAG_XMPP_READ_START];
+			}
 		}
 		else
 		{
@@ -3435,7 +3460,7 @@ enum XMPPStreamConfig
 		{
 			[asyncSocket readDataWithTimeout:TIMEOUT_XMPP_READ_START tag:TAG_XMPP_READ_START];
 		}
-		else if (state != STATE_XMPP_STARTTLS_2)
+		else
 		{
 			[asyncSocket readDataWithTimeout:TIMEOUT_XMPP_READ_STREAM tag:TAG_XMPP_READ_STREAM];
 		}
@@ -3736,7 +3761,7 @@ enum XMPPStreamConfig
 		{
 			[asyncSocket readDataWithTimeout:TIMEOUT_XMPP_READ_START tag:TAG_XMPP_READ_START];
 		}
-		else if (state != STATE_XMPP_STARTTLS_2)
+		else if (state != STATE_XMPP_STARTTLS_2) // Don't queue read operation prior to [asyncSocket startTLS:]
 		{
 			[asyncSocket readDataWithTimeout:TIMEOUT_XMPP_READ_STREAM tag:TAG_XMPP_READ_STREAM];
 		}
@@ -3911,7 +3936,12 @@ enum XMPPStreamConfig
 		
 		while ([autoDelegatesEnumerator getNextDelegate:&delegate delegateQueue:&delegateQueue])
 		{
-			[module removeDelegate:delegate delegateQueue:delegateQueue];
+			// The module itself has dispatch_sync'd in order to invoke its deactivate method,
+			// which has in turn invoked this method. If we call back into the module,
+			// and have it dispatch_sync again, we're going to get a deadlock.
+			// So we must remove the delegate(s) asynchronously.
+			
+			[module removeDelegate:delegate delegateQueue:delegateQueue synchronously:NO];
 		}
 		
 		// Unregister modules
