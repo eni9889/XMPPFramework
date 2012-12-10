@@ -102,6 +102,24 @@
 #pragma mark -
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
+@interface GCDMulticastDelegate ()
+
+- (void)addDelegate:(id)delegate delegateQueue:(dispatch_queue_t)delegateQueue;
+- (void)removeDelegate:(id)delegate delegateQueue:(dispatch_queue_t)delegateQueue;
+- (void)removeDelegate:(id)delegate;
+
+- (void)removeAllDelegates;
+
+- (NSUInteger)count;
+- (NSUInteger)countOfClass:(Class)aClass;
+- (NSUInteger)countForSelector:(SEL)aSelector;
+
+- (BOOL)hasDelegateThatRespondsToSelector:(SEL)aSelector;
+
+- (GCDMulticastDelegateEnumerator *)delegateEnumerator;
+
+@end
+
 @implementation XMPPCapabilities
 
 @dynamic xmppCapabilitiesStorage;
