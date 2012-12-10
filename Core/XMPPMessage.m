@@ -86,7 +86,7 @@
 
 - (BOOL)isChatMessageWithBody
 {
-	if ([self isChatMessage])
+	if([self isChatMessage])
 	{
 		return [self isMessageWithBody];
 	}
@@ -112,7 +112,9 @@
 
 - (BOOL)isMessageWithBody
 {
-	return ([self elementForName:@"body"] != nil);
+	NSString *body = [[self elementForName:@"body"] stringValue];
+	
+	return ([body length] > 0);
 }
 
 @end

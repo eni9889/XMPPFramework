@@ -117,10 +117,10 @@
 		}
 	}};
 	
-	if (dispatch_get_current_queue() == self.xmppQueue)
+	if (dispatch_get_current_queue() == xmppQueue)
 		block();
 	else
-		dispatch_sync(self.xmppQueue, block);
+		dispatch_sync(xmppQueue, block);
 	
 	if (errPtr)
 		*errPtr = err;

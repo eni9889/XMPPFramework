@@ -5,12 +5,14 @@
 // Log levels: off, error, warn, info, verbose
 static const int ddLogLevel = LOG_LEVEL_VERBOSE;
 
-#define XMPP_HOSTNAME  @""
+#define XMPP_HOSTNAME_1  @"us-east3.pub.yak.tv"
+#define XMPP_HOSTNAME_2  @"xmpp1.yap.tv"
+#define XMPP_HOSTNAME_3  @"us-west1.yap.tv"
 
-#define XMPP_JID       @""
-#define XMPP_PASSWORD  @""
+#define XMPP_JID         @"yap_user-214842@api.yap.tv"
+#define XMPP_PASSWORD    @"XECGDhRBSzEYo7T92ywi"
 
-#define ROOM_JID       @""
+#define ROOM_JID         @"robbie-test-xmppv3@conference.api.yap.tv"
 
 
 @implementation MUCTestingAppDelegate
@@ -23,7 +25,7 @@ static const int ddLogLevel = LOG_LEVEL_VERBOSE;
 	
 	xmppStream = [[XMPPStream alloc] init];
 	
-	xmppStream.hostName = XMPP_HOSTNAME;
+	xmppStream.hostName = XMPP_HOSTNAME_2;
 	xmppStream.myJID = [XMPPJID jidWithString:XMPP_JID];
 	
 	[xmppStream addDelegate:self delegateQueue:dispatch_get_main_queue()];
@@ -42,7 +44,7 @@ static const int ddLogLevel = LOG_LEVEL_VERBOSE;
 	NSError *err = nil;
 	if (![xmppStream connect:&err])
 	{
-		DDLogError(@"MUCTesting: Cannot connect: %@", err);
+		DDLogError(@"YapTesting: Cannot connect: %@", err);
 	}
 }
 

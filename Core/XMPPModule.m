@@ -178,32 +178,36 @@
 		dispatch_async(moduleQueue, block);
 }
 
-- (void)removeDelegate:(id)delegate delegateQueue:(dispatch_queue_t)delegateQueue synchronously:(BOOL)synchronously
+- (void)removeDelegate:(id)delegate delegateQueue:(dispatch_queue_t)delegateQueue
 {
+	// Synchronous operation
+	// 
+	// Delegate removal MUST always be synchronous.
+	
 	dispatch_block_t block = ^{
 		[multicastDelegate removeDelegate:delegate delegateQueue:delegateQueue];
 	};
 	
 	if (dispatch_get_current_queue() == moduleQueue)
 		block();
-	else if (synchronously)
-		dispatch_sync(moduleQueue, block);
 	else
-		dispatch_async(moduleQueue, block);
-	
-}
-- (void)removeDelegate:(id)delegate delegateQueue:(dispatch_queue_t)delegateQueue
-{
-	// Synchronous operation (common-case default)
-	
-	[self removeDelegate:delegate delegateQueue:delegateQueue synchronously:YES];
+		dispatch_sync(moduleQueue, block);
 }
 
 - (void)removeDelegate:(id)delegate
 {
-	// Synchronous operation (common-case default)
+	// Synchronous operation
+	// 
+	// Delegate remove MUST always be synchronous.
 	
-	[self removeDelegate:delegate delegateQueue:NULL synchronously:YES];
+	dispatch_block_t block = ^{
+		[multicastDelegate removeDelegate:delegate];
+	};
+	
+	if (dispatch_get_current_queue() == moduleQueue)
+		block();
+	else
+		dispatch_sync(moduleQueue, block);
 }
 
 - (NSString *)moduleName
